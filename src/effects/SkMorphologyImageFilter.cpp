@@ -18,6 +18,7 @@
 #include "GrDrawContext.h"
 #include "GrInvariantOutput.h"
 #include "GrTexture.h"
+#include "SkGr.h"
 #include "effects/Gr1DKernelEffect.h"
 #include "glsl/GrGLSLFragmentProcessor.h"
 #include "glsl/GrGLSLFragmentShaderBuilder.h"
@@ -548,8 +549,7 @@ bool apply_morphology(const SkBitmap& input,
                       const SkIRect& rect,
                       GrMorphologyEffect::MorphologyType morphType,
                       SkISize radius,
-                      SkBitmap* dst,
-                      GrTextureProvider::SizeConstraint constraint) {
+                      SkBitmap* dst) {
     SkAutoTUnref<GrTexture> srcTexture(SkRef(input.getTexture()));
     SkASSERT(srcTexture);
     GrContext* context = srcTexture->getContext();
@@ -567,14 +567,7 @@ bool apply_morphology(const SkBitmap& input,
     SkIRect srcRect = rect;
 
     if (radius.fWidth > 0) {
-        GrTextureProvider::SizeConstraint horiConstraint = constraint;
-        if (radius.fHeight > 0) {
-            // Optimization: we will fall through and allocate the "real" texture after this one
-            // so ours can be approximate (likely faster to allocate)
-            horiConstraint = GrTextureProvider::kApprox_SizeConstraint;
-        }
-
-        GrTexture* scratch = context->textureProvider()->createTexture(desc, horiConstraint);
+        GrTexture* scratch = context->textureProvider()->createApproxTexture(desc);
         if (nullptr == scratch) {
             return false;
         }
@@ -598,7 +591,7 @@ bool apply_morphology(const SkBitmap& input,
         srcRect = dstRect;
     }
     if (radius.fHeight > 0) {
-        GrTexture* scratch = context->textureProvider()->createTexture(desc, constraint);
+        GrTexture* scratch = context->textureProvider()->createApproxTexture(desc);
         if (nullptr == scratch) {
             return false;
         }
@@ -614,7 +607,7 @@ bool apply_morphology(const SkBitmap& input,
 
         srcTexture.reset(scratch);
     }
-    SkImageFilter::WrapTexture(srcTexture, rect.width(), rect.height(), dst);
+    GrWrapTextureInBitmap(srcTexture, rect.width(), rect.height(), false, dst);
     return true;
 }
 
@@ -656,8 +649,7 @@ bool SkMorphologyImageFilter::filterImageGPUGeneric(bool dilate,
 
     GrMorphologyEffect::MorphologyType type = dilate ? GrMorphologyEffect::kDilate_MorphologyType
                                                      : GrMorphologyEffect::kErode_MorphologyType;
-    if (!apply_morphology(input, srcBounds, type, SkISize::Make(width, height), result,
-                          GrTextureProvider::FromImageFilter(ctx.sizeConstraint()))) {
+    if (!apply_morphology(input, srcBounds, type, SkISize::Make(width, height), result)) {
         return false;
     }
     offset->fX = bounds.left();

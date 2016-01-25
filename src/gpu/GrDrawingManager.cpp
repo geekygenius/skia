@@ -20,6 +20,9 @@ void GrDrawingManager::cleanup() {
         fDrawTargets[i]->makeClosed();  // no drawTarget should receive a new command after this
         fDrawTargets[i]->clearRT();
 
+        // We shouldn't need to do this, but it turns out some clients still hold onto drawtargets
+        // after a cleanup
+        fDrawTargets[i]->reset();
         fDrawTargets[i]->unref();
     }
 
@@ -159,7 +162,7 @@ GrDrawTarget* GrDrawingManager::newDrawTarget(GrRenderTarget* rt) {
 #endif
 
     GrDrawTarget* dt = new GrDrawTarget(rt, fContext->getGpu(), fContext->resourceProvider(),
-                                        fOptionsForDrawTargets);
+                                        fContext->getAuditTrail(), fOptionsForDrawTargets);
 
     *fDrawTargets.append() = dt;
 
@@ -199,5 +202,5 @@ GrDrawContext* GrDrawingManager::drawContext(GrRenderTarget* rt,
         return nullptr;
     }
 
-    return new GrDrawContext(this, rt, surfaceProps);
+    return new GrDrawContext(this, rt, surfaceProps, fContext->getAuditTrail(), fSingleOwner);
 }

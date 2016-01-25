@@ -422,16 +422,27 @@ public:
     typedef uint32_t SaveLayerFlags;
 
     struct SaveLayerRec {
-        SaveLayerRec() : fBounds(nullptr), fPaint(nullptr), fSaveLayerFlags(0) {}
+        SaveLayerRec()
+            : fBounds(nullptr), fPaint(nullptr), fBackdrop(nullptr), fSaveLayerFlags(0)
+        {}
         SaveLayerRec(const SkRect* bounds, const SkPaint* paint, SaveLayerFlags saveLayerFlags = 0)
             : fBounds(bounds)
             , fPaint(paint)
+            , fBackdrop(nullptr)
+            , fSaveLayerFlags(saveLayerFlags)
+        {}
+        SaveLayerRec(const SkRect* bounds, const SkPaint* paint, const SkImageFilter* backdrop,
+                     SaveLayerFlags saveLayerFlags)
+            : fBounds(bounds)
+            , fPaint(paint)
+            , fBackdrop(backdrop)
             , fSaveLayerFlags(saveLayerFlags)
         {}
 
-        const SkRect*   fBounds;    // optional
-        const SkPaint*  fPaint;     // optional
-        SaveLayerFlags  fSaveLayerFlags;
+        const SkRect*           fBounds;    // optional
+        const SkPaint*          fPaint;     // optional
+        const SkImageFilter*    fBackdrop;  // optional
+        SaveLayerFlags          fSaveLayerFlags;
     };
 
     int saveLayer(const SaveLayerRec&);
@@ -1138,11 +1149,18 @@ public:
     void drawDrawable(SkDrawable*, SkScalar x, SkScalar y);
 
     //////////////////////////////////////////////////////////////////////////
+#ifdef SK_INTERNAL
+#ifndef SK_SUPPORT_LEGACY_DRAWFLTER
+    #define SK_SUPPORT_LEGACY_DRAWFLTER
+#endif
+#endif
 
+#ifdef SK_SUPPORT_LEGACY_DRAWFLTER
     /** Get the current filter object. The filter's reference count is not
         affected. The filter is saved/restored, just like the matrix and clip.
         @return the canvas' filter (or NULL).
     */
+    SK_ATTR_EXTERNALLY_DEPRECATED("getDrawFilter use is deprecated")
     SkDrawFilter* getDrawFilter() const;
 
     /** Set the new filter (or NULL). Pass NULL to clear any existing filter.
@@ -1153,8 +1171,9 @@ public:
         @param filter the new filter (or NULL)
         @return the new filter
     */
+    SK_ATTR_EXTERNALLY_DEPRECATED("setDrawFilter use is deprecated")
     virtual SkDrawFilter* setDrawFilter(SkDrawFilter* filter);
-
+#endif
     //////////////////////////////////////////////////////////////////////////
 
     /**
@@ -1353,6 +1372,11 @@ protected:
     bool clipRectBounds(const SkRect* bounds, SaveLayerFlags, SkIRect* intersection,
                         const SkImageFilter* imageFilter = NULL);
 
+#ifdef SK_SUPPORT_LEGACY_SAVEFLAGS
+    // Needed by SkiaCanvasProxy in Android. Make sure that class is updated
+    // before removing this method.
+    static uint32_t SaveLayerFlagsToSaveFlags(SaveLayerFlags);
+#endif
 private:
     static bool BoundsAffectsClip(SaveLayerFlags);
 #ifdef SK_SUPPORT_LEGACY_SAVEFLAGS
@@ -1553,49 +1577,6 @@ private:
     int         fSaveCount;
 };
 #define SkAutoCanvasRestore(...) SK_REQUIRE_LOCAL_VAR(SkAutoCanvasRestore)
-
-/**
- *  If the caller wants read-only access to the pixels in a canvas, it can just
- *  call canvas->peekPixels(), since that is the fastest way to "peek" at the
- *  pixels on a raster-backed canvas.
- *
- *  If the canvas has pixels, but they are not readily available to the CPU
- *  (e.g. gpu-backed), then peekPixels() will fail, but readPixels() will
- *  succeed (though be slower, since it will return a copy of the pixels).
- *
- *  SkAutoROCanvasPixels encapsulates these two techniques, trying first to call
- *  peekPixels() (for performance), but if that fails, calling readPixels() and
- *  storing the copy locally.
- *
- *  The caller must respect the restrictions associated with peekPixels(), since
- *  that may have been called: The returned information is invalidated if...
- *      - any API is called on the canvas (or its parent surface if present)
- *      - the canvas goes out of scope
- */
-class SkAutoROCanvasPixels : SkNoncopyable {
-public:
-    SkAutoROCanvasPixels(SkCanvas* canvas);
-
-    // returns NULL on failure
-    const void* addr() const { return fAddr; }
-
-    // undefined if addr() == NULL
-    size_t rowBytes() const { return fRowBytes; }
-
-    // undefined if addr() == NULL
-    const SkImageInfo& info() const { return fInfo; }
-
-    // helper that, if returns true, installs the pixels into the bitmap. Note
-    // that the bitmap may reference the address returned by peekPixels(), so
-    // the caller must respect the restrictions associated with peekPixels().
-    bool asROBitmap(SkBitmap*) const;
-
-private:
-    SkBitmap    fBitmap;    // used if peekPixels() fails
-    const void* fAddr;      // NULL on failure
-    SkImageInfo fInfo;
-    size_t      fRowBytes;
-};
 
 #ifdef SK_SUPPORT_LEGACY_SAVEFLAGS
 static inline SkCanvas::SaveFlags operator|(const SkCanvas::SaveFlags lhs,

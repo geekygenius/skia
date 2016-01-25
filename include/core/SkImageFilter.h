@@ -45,31 +45,22 @@ public:
         virtual void purgeByImageFilterId(uint32_t) {}
     };
 
-    enum SizeConstraint {
-        kExact_SizeConstraint,
-        kApprox_SizeConstraint,
-    };
-
     class Context {
     public:
-        Context(const SkMatrix& ctm, const SkIRect& clipBounds, Cache* cache,
-                SizeConstraint constraint)
+        Context(const SkMatrix& ctm, const SkIRect& clipBounds, Cache* cache)
             : fCTM(ctm)
             , fClipBounds(clipBounds)
             , fCache(cache)
-            , fSizeConstraint(constraint)
         {}
 
         const SkMatrix& ctm() const { return fCTM; }
         const SkIRect& clipBounds() const { return fClipBounds; }
         Cache* cache() const { return fCache; }
-        SizeConstraint sizeConstraint() const { return fSizeConstraint; }
 
     private:
         SkMatrix        fCTM;
         SkIRect         fClipBounds;
         Cache*          fCache;
-        SizeConstraint  fSizeConstraint;
     };
 
     class CropRect {
@@ -107,11 +98,17 @@ public:
         uint32_t fFlags;
     };
 
+    enum TileUsage {
+        kPossible_TileUsage,    //!< the created device may be drawn tiled
+        kNever_TileUsage,       //!< the created device will never be drawn tiled
+    };
+
     class Proxy {
     public:
         virtual ~Proxy() {}
 
-        virtual SkBaseDevice* createDevice(int width, int height) = 0;
+        virtual SkBaseDevice* createDevice(int width, int height,
+                                           TileUsage usage = kNever_TileUsage) = 0;
 
         // Returns true if the proxy handled the filter itself. If this returns
         // false then the filter's code will be called.
@@ -124,7 +121,8 @@ public:
     public:
         DeviceProxy(SkBaseDevice* device) : fDevice(device) {}
 
-        SkBaseDevice* createDevice(int width, int height) override;
+        SkBaseDevice* createDevice(int width, int height,
+                                   TileUsage usage = kNever_TileUsage) override;
 
         // Returns true if the proxy handled the filter itself. If this returns
         // false then the filter's code will be called.
@@ -252,11 +250,6 @@ public:
                                              SkImageFilter* input = NULL);
 
 #if SK_SUPPORT_GPU
-    /**
-     * Wrap the given texture in a texture-backed SkBitmap.
-     */
-    static void WrapTexture(GrTexture* texture, int width, int height, SkBitmap* result);
-
     // Helper function which invokes GPU filter processing on the
     // input at the specified "index". If the input is null, it leaves
     // "result" and "offset" untouched, and returns true. If the input
@@ -264,7 +257,7 @@ public:
     // Otherwise, the filter will be processed in software and
     // uploaded to the GPU.
     bool filterInputGPU(int index, SkImageFilter::Proxy* proxy, const SkBitmap& src, const Context&,
-                        SkBitmap* result, SkIPoint* offset, bool relaxSizeConstraint = true) const;
+                        SkBitmap* result, SkIPoint* offset) const;
 #endif
 
     SK_TO_STRING_PUREVIRT()
@@ -373,7 +366,7 @@ protected:
     // calls filterImage() on that input, and returns true on success.
     // i.e., return !getInput(index) || getInput(index)->filterImage(...);
     bool filterInput(int index, Proxy*, const SkBitmap& src, const Context&,
-                     SkBitmap* result, SkIPoint* offset, bool relaxSizeConstraint = true) const;
+                     SkBitmap* result, SkIPoint* offset) const;
 
     /**
      *  Return true (and return a ref'd colorfilter) if this node in the DAG is just a

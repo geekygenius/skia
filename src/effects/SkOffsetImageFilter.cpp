@@ -20,11 +20,7 @@ bool SkOffsetImageFilter::onFilterImage(Proxy* proxy, const SkBitmap& source,
                                         SkIPoint* offset) const {
     SkBitmap src = source;
     SkIPoint srcOffset = SkIPoint::Make(0, 0);
-#ifdef SK_DISABLE_OFFSETIMAGEFILTER_OPTIMIZATION
-    if (false) {
-#else
     if (!cropRectIsSet()) {
-#endif
         if (!this->filterInput(0, proxy, source, ctx, &src, &srcOffset)) {
             return false;
         }
@@ -70,13 +66,7 @@ void SkOffsetImageFilter::computeFastBounds(const SkRect& src, SkRect* dst) cons
     } else {
         *dst = src;
     }
-#ifdef SK_SUPPORT_SRC_BOUNDS_BLOAT_FOR_IMAGEFILTERS
-    SkRect copy = *dst;
-#endif
     dst->offset(fOffset.fX, fOffset.fY);
-#ifdef SK_SUPPORT_SRC_BOUNDS_BLOAT_FOR_IMAGEFILTERS
-    dst->join(copy);
-#endif
 }
 
 void SkOffsetImageFilter::onFilterNodeBounds(const SkIRect& src, const SkMatrix& ctm,
@@ -89,9 +79,6 @@ void SkOffsetImageFilter::onFilterNodeBounds(const SkIRect& src, const SkMatrix&
 
     *dst = src;
     dst->offset(SkScalarCeilToInt(vec.fX), SkScalarCeilToInt(vec.fY));
-#ifdef SK_SUPPORT_SRC_BOUNDS_BLOAT_FOR_IMAGEFILTERS
-    dst->join(src);
-#endif
 }
 
 SkFlattenable* SkOffsetImageFilter::CreateProc(SkReadBuffer& buffer) {

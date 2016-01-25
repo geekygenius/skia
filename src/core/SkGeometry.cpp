@@ -9,18 +9,6 @@
 #include "SkMatrix.h"
 #include "SkNx.h"
 
-#if 0
-static Sk2s from_point(const SkPoint& point) {
-    return Sk2s::Load(&point.fX);
-}
-
-static SkPoint to_point(const Sk2s& x) {
-    SkPoint point;
-    x.store(&point.fX);
-    return point;
-}
-#endif
-
 static SkVector to_vector(const Sk2s& x) {
     SkVector vector;
     x.store(&vector.fX);
@@ -90,7 +78,13 @@ int SkFindUnitQuadRoots(SkScalar A, SkScalar B, SkScalar C, SkScalar roots[2]) {
     SkScalar* r = roots;
 
     SkScalar R = B*B - 4*A*C;
-    if (R < 0 || SkScalarIsNaN(R)) {  // complex roots
+    if (R < 0 || !SkScalarIsFinite(R)) {  // complex roots
+        // if R is infinite, it's possible that it may still produce
+        // useful results if the operation was repeated in doubles
+        // the flipside is determining if the more precise answer
+        // isn't useful because surrounding machinery (e.g., subtracting
+        // the axis offset from C) already discards the extra precision
+        // more investigation and unit tests required...
         return 0;
     }
     R = SkScalarSqrt(R);
@@ -214,7 +208,7 @@ void SkChopQuadAt(const SkPoint src[3], SkPoint dst[5], SkScalar t) {
 }
 
 void SkChopQuadAtHalf(const SkPoint src[3], SkPoint dst[5]) {
-    SkChopQuadAt(src, dst, 0.5f); return;
+    SkChopQuadAt(src, dst, 0.5f);
 }
 
 /** Quad'(t) = At + B, where
@@ -957,6 +951,7 @@ bool SkChopMonoCubicAtX(SkPoint src[4], SkScalar x, SkPoint dst[7]) {
 
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifdef SK_SUPPORT_LEGACY_ARCTO
 /*  Find t value for quadratic [a, b, c] = d.
     Return 0 if there is no solution within [0, 1)
 */
@@ -1126,7 +1121,7 @@ int SkBuildQuadArc(const SkVector& uStart, const SkVector& uStop,
     matrix.mapPoints(quadPoints, pointCount);
     return pointCount;
 }
-
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -1145,24 +1140,6 @@ int SkBuildQuadArc(const SkVector& uStart, const SkVector& uStop,
 //     ------------------------------------------------
 //             {t^2 (2 - 2 w), t (-2 + 2 w), 1}
 //
-
-static SkScalar conic_eval_pos(const SkScalar src[], SkScalar w, SkScalar t) {
-    SkASSERT(src);
-    SkASSERT(t >= 0 && t <= SK_Scalar1);
-
-    SkScalar    src2w = SkScalarMul(src[2], w);
-    SkScalar    C = src[0];
-    SkScalar    A = src[4] - 2 * src2w + C;
-    SkScalar    B = 2 * (src2w - C);
-    SkScalar numer = SkScalarMulAdd(SkScalarMulAdd(A, t, B), t, C);
-
-    B = 2 * (w - SK_Scalar1);
-    C = SK_Scalar1;
-    A = -B;
-    SkScalar denom = SkScalarMulAdd(SkScalarMulAdd(A, t, B), t, C);
-
-    return numer / denom;
-}
 
 // F' = 2 (C t (1 + t (-1 + w)) - A (-1 + t) (t (-1 + w) - w) + B (1 - 2 t) w)
 //
@@ -1230,18 +1207,6 @@ static void ratquad_mapTo3D(const SkPoint src[3], SkScalar w, SkP3D dst[]) {
     dst[2].set(src[2].fX * 1, src[2].fY * 1, 1);
 }
 
-void SkConic::evalAt(SkScalar t, SkPoint* pt, SkVector* tangent) const {
-    SkASSERT(t >= 0 && t <= SK_Scalar1);
-
-    if (pt) {
-        pt->set(conic_eval_pos(&fPts[0].fX, fW, t),
-                conic_eval_pos(&fPts[0].fY, fW, t));
-    }
-    if (tangent) {
-        *tangent = evalTangentAt(t);
-    }
-}
-
 void SkConic::chopAt(SkScalar t, SkConic dst[2]) const {
     SkP3D tmp[3], tmp2[3];
 
@@ -1270,8 +1235,34 @@ void SkConic::chopAt(SkScalar t, SkConic dst[2]) const {
     dst[1].fW = tmp2[2].fZ / root;
 }
 
-static Sk2s times_2(const Sk2s& value) {
-    return value + value;
+void SkConic::chopAt(SkScalar t1, SkScalar t2, SkConic* dst) const {
+    if (0 == t1 || 1 == t2) {
+        if (0 == t1 && 1 == t2) {
+            *dst = *this;
+        } else {
+            SkConic pair[2];
+            this->chopAt(t1 ? t1 : t2, pair);
+            *dst = pair[SkToBool(t1)];
+        }
+        return;
+    }
+    SkConicCoeff coeff(*this);
+    Sk2s tt1(t1);
+    Sk2s aXY = coeff.fNumer.eval(tt1);
+    Sk2s aZZ = coeff.fDenom.eval(tt1);
+    Sk2s midTT((t1 + t2) / 2);
+    Sk2s dXY = coeff.fNumer.eval(midTT);
+    Sk2s dZZ = coeff.fDenom.eval(midTT);
+    Sk2s tt2(t2);
+    Sk2s cXY = coeff.fNumer.eval(tt2);
+    Sk2s cZZ = coeff.fDenom.eval(tt2);
+    Sk2s bXY = times_2(dXY) - (aXY + cXY) * Sk2s(0.5f);
+    Sk2s bZZ = times_2(dZZ) - (aZZ + cZZ) * Sk2s(0.5f);
+    dst->fPts[0] = to_point(aXY / aZZ);
+    dst->fPts[1] = to_point(bXY / bZZ);
+    dst->fPts[2] = to_point(cXY / cZZ);
+    Sk2s ww = bZZ / (aZZ * cZZ).sqrt();
+    dst->fW = ww.kth<0>();
 }
 
 SkPoint SkConic::evalAt(SkScalar t) const {
@@ -1315,6 +1306,17 @@ SkVector SkConic::evalTangentAt(SkScalar t) const {
     Sk2s B = p20 - C - C;
 
     return to_vector(quad_poly_eval(A, B, C, Sk2s(t)));
+}
+
+void SkConic::evalAt(SkScalar t, SkPoint* pt, SkVector* tangent) const {
+    SkASSERT(t >= 0 && t <= SK_Scalar1);
+    
+    if (pt) {
+        *pt = this->evalAt(t);
+    }
+    if (tangent) {
+        *tangent = this->evalTangentAt(t);
+    }
 }
 
 static SkScalar subdivide_w_value(SkScalar w) {

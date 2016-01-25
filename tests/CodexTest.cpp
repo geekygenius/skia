@@ -9,6 +9,7 @@
 #include "SkAndroidCodec.h"
 #include "SkBitmap.h"
 #include "SkCodec.h"
+#include "SkCodecImageGenerator.h"
 #include "SkData.h"
 #include "SkImageDecoder.h"
 #include "SkMD5.h"
@@ -379,6 +380,18 @@ static void check(skiatest::Reporter* r,
                 &scaledCodecDigest, &codecDigest);
     }
 
+    // Test SkCodecImageGenerator
+    if (!isIncomplete) {
+        SkAutoTDelete<SkStream> stream(resource(path));
+        SkAutoTUnref<SkData> fullData(SkData::NewFromStream(stream, stream->getLength()));
+        SkAutoTDelete<SkImageGenerator> gen(SkCodecImageGenerator::NewFromEncodedCodec(fullData));
+        SkBitmap bm;
+        bm.allocPixels(info);
+        SkAutoLockPixels autoLockPixels(bm);
+        REPORTER_ASSERT(r, gen->getPixels(info, bm.getPixels(), bm.rowBytes()));
+        compare_to_good_digest(r, codecDigest, bm);
+    }
+
     // If we've just tested incomplete decodes, let's run the same test again on full decodes.
     if (isIncomplete) {
         check(r, path, size, supportsScanlineDecoding, supportsSubsetDecoding, false);
@@ -742,17 +755,17 @@ DEF_TEST(Codec_pngChunkReader, r) {
 
     // Create some chunks that match the Android framework's use.
     static png_unknown_chunk gUnknowns[] = {
-        { "npOl", (png_byte*)"outline", sizeof("outline"), PNG_HAVE_PLTE },
-        { "npLb", (png_byte*)"layoutBounds", sizeof("layoutBounds"), PNG_HAVE_PLTE },
-        { "npTc", (png_byte*)"ninePatchData", sizeof("ninePatchData"), PNG_HAVE_PLTE },
+        { "npOl", (png_byte*)"outline", sizeof("outline"), PNG_HAVE_IHDR },
+        { "npLb", (png_byte*)"layoutBounds", sizeof("layoutBounds"), PNG_HAVE_IHDR },
+        { "npTc", (png_byte*)"ninePatchData", sizeof("ninePatchData"), PNG_HAVE_IHDR },
     };
 
     png_set_keep_unknown_chunks(png, PNG_HANDLE_CHUNK_ALWAYS, (png_byte*)"npOl\0npLb\0npTc\0", 3);
     png_set_unknown_chunks(png, info, gUnknowns, SK_ARRAY_COUNT(gUnknowns));
 #if PNG_LIBPNG_VER < 10600
     /* Deal with unknown chunk location bug in 1.5.x and earlier */
-    png_set_unknown_chunk_location(png, info, 0, PNG_HAVE_PLTE);
-    png_set_unknown_chunk_location(png, info, 1, PNG_HAVE_PLTE);
+    png_set_unknown_chunk_location(png, info, 0, PNG_HAVE_IHDR);
+    png_set_unknown_chunk_location(png, info, 1, PNG_HAVE_IHDR);
 #endif
 
     png_write_info(png, info);

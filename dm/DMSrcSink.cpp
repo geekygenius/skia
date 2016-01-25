@@ -6,14 +6,15 @@
  */
 
 #include "DMSrcSink.h"
-#include "SamplePipeControllers.h"
 #include "SkAndroidCodec.h"
 #include "SkCodec.h"
+#include "SkCodecImageGenerator.h"
 #include "SkCommonFlags.h"
 #include "SkData.h"
 #include "SkDocument.h"
 #include "SkError.h"
 #include "SkImageGenerator.h"
+#include "SkMallocPixelRef.h"
 #include "SkMultiPictureDraw.h"
 #include "SkNullCanvas.h"
 #include "SkOSFile.h"
@@ -240,11 +241,14 @@ CodecSrc::CodecSrc(Path path, Mode mode, DstColorType dstColorType, float scale)
 {}
 
 bool CodecSrc::veto(SinkFlags flags) const {
-    // No need to test decoding to non-raster or indirect backend.
-    // TODO: Once we implement GPU paths (e.g. JPEG YUV), we should use a deferred decode to
-    // let the GPU handle it.
-    return flags.type != SinkFlags::kRaster
-        || flags.approach != SinkFlags::kDirect;
+    // Test CodecImageGenerator on 8888, 565, and gpu
+    if (kGen_Mode == fMode) {
+        return (flags.type != SinkFlags::kRaster || flags.approach != SinkFlags::kDirect) &&
+                flags.type != SinkFlags::kGPU;
+    }
+
+    // Test all other modes to direct raster backends (8888 and 565).
+    return flags.type != SinkFlags::kRaster || flags.approach != SinkFlags::kDirect;
 }
 
 bool get_decode_info(SkImageInfo* decodeInfo, const SkImageInfo& defaultInfo,
@@ -274,11 +278,37 @@ bool get_decode_info(SkImageInfo* decodeInfo, const SkImageInfo& defaultInfo,
     return true;
 }
 
+Error test_gen(SkCanvas* canvas, SkData* data) {
+    SkImageGenerator* gen = SkCodecImageGenerator::NewFromEncodedCodec(data);
+    if (!gen) {
+        return "Could not create image generator.";
+    }
+
+    // FIXME: The gpu backend does not draw kGray sources correctly. (skbug.com/4822)
+    // Currently, we will avoid creating a CodecSrc for this case (see DM.cpp).
+    SkASSERT(kGray_8_SkColorType != gen->getInfo().colorType());
+
+    SkAutoTDelete<SkImage> image(SkImage::NewFromGenerator(gen, nullptr));
+    if (!image) {
+        return "Could not create image from codec image generator.";
+    }
+
+    canvas->drawImage(image, 0, 0);
+    return "";
+}
+
 Error CodecSrc::draw(SkCanvas* canvas) const {
     SkAutoTUnref<SkData> encoded(SkData::NewFromFileName(fPath.c_str()));
     if (!encoded) {
         return SkStringPrintf("Couldn't read %s.", fPath.c_str());
     }
+
+    // The CodecImageGenerator test does not share much code with the other tests,
+    // so we will handle it in its own function.
+    if (kGen_Mode == fMode) {
+        return test_gen(canvas, encoded);
+    }
+
     SkAutoTDelete<SkCodec> codec(SkCodec::NewFromData(encoded));
     if (nullptr == codec.get()) {
         return SkStringPrintf("Couldn't create codec for %s.", fPath.c_str());
@@ -316,14 +346,22 @@ Error CodecSrc::draw(SkCanvas* canvas) const {
     }
 
     SkBitmap bitmap;
-    if (!bitmap.tryAllocPixels(decodeInfo, nullptr, colorTable.get())) {
+    SkPixelRefFactory* factory = nullptr;
+    SkMallocPixelRef::ZeroedPRFactory zeroFactory;
+    SkCodec::Options options;
+    if (kCodecZeroInit_Mode == fMode) {
+        factory = &zeroFactory;
+        options.fZeroInitialized = SkCodec::kYes_ZeroInitialized;
+    }
+    if (!bitmap.tryAllocPixels(decodeInfo, factory, colorTable.get())) {
         return SkStringPrintf("Image(%s) is too large (%d x %d)", fPath.c_str(),
                               decodeInfo.width(), decodeInfo.height());
     }
 
     switch (fMode) {
+        case kCodecZeroInit_Mode:
         case kCodec_Mode: {
-            switch (codec->getPixels(decodeInfo, bitmap.getPixels(), bitmap.rowBytes(), nullptr,
+            switch (codec->getPixels(decodeInfo, bitmap.getPixels(), bitmap.rowBytes(), &options,
                     colorPtr, colorCountPtr)) {
                 case SkCodec::kSuccess:
                     // We consider incomplete to be valid, since we should still decode what is
@@ -501,6 +539,9 @@ Error CodecSrc::draw(SkCanvas* canvas) const {
             }
             return "";
         }
+        default:
+            SkASSERT(false);
+            return "Invalid fMode";
     }
     return "";
 }
@@ -533,8 +574,6 @@ AndroidCodecSrc::AndroidCodecSrc(Path path, Mode mode, CodecSrc::DstColorType ds
 
 bool AndroidCodecSrc::veto(SinkFlags flags) const {
     // No need to test decoding to non-raster or indirect backend.
-    // TODO: Once we implement GPU paths (e.g. JPEG YUV), we should use a deferred decode to
-    // let the GPU handle it.
     return flags.type != SinkFlags::kRaster
         || flags.approach != SinkFlags::kDirect;
 }
@@ -790,13 +829,11 @@ DEFINE_bool(gpuStats, false, "Append GPU stats to the log for each GPU task?");
 
 GPUSink::GPUSink(GrContextFactory::GLContextType ct,
                  GrContextFactory::GLContextOptions options,
-                 GrGLStandard gpuAPI,
                  int samples,
                  bool diText,
                  bool threaded)
     : fContextType(ct)
     , fContextOptions(options)
-    , fGpuAPI(gpuAPI)
     , fSampleCount(samples)
     , fUseDIText(diText)
     , fThreaded(threaded) {}
@@ -826,8 +863,7 @@ Error GPUSink::draw(const Src& src, SkBitmap* dst, SkWStream*, SkString* log) co
     const SkImageInfo info =
         SkImageInfo::Make(size.width(), size.height(), kN32_SkColorType, kPremul_SkAlphaType);
     SkAutoTUnref<SkSurface> surface(
-            NewGpuSurface(&factory, fContextType, fContextOptions, fGpuAPI, info, fSampleCount,
-                          fUseDIText));
+            NewGpuSurface(&factory, fContextType, fContextOptions, info, fSampleCount, fUseDIText));
     if (!surface) {
         return "Could not create a surface.";
     }
@@ -976,8 +1012,10 @@ Error RasterSink::draw(const Src& src, SkBitmap* dst, SkWStream*, SkString*) con
     SkAlphaType alphaType = kPremul_SkAlphaType;
     (void)SkColorTypeValidateAlphaType(fColorType, alphaType, &alphaType);
 
-    dst->allocPixels(SkImageInfo::Make(size.width(), size.height(), fColorType, alphaType));
-    dst->eraseColor(SK_ColorTRANSPARENT);
+    SkMallocPixelRef::ZeroedPRFactory factory;
+    dst->allocPixels(SkImageInfo::Make(size.width(), size.height(), fColorType, alphaType),
+                     &factory,
+                     nullptr/*colortable*/);
     SkCanvas canvas(*dst);
     return src.draw(&canvas);
 }
@@ -1001,6 +1039,36 @@ static Error draw_to_canvas(Sink* sink, SkBitmap* bitmap, SkWStream* stream, SkS
         std::function<Error(SkCanvas*)> fDraw;
     };
     return sink->draw(ProxySrc(size, draw), bitmap, stream, log);
+}
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+DEFINE_bool(check, true, "If true, have most Via- modes fail if they affect the output.");
+
+// Is *bitmap identical to what you get drawing src into sink?
+static Error check_against_reference(const SkBitmap* bitmap, const Src& src, Sink* sink) {
+    // We can only check raster outputs.
+    // (Non-raster outputs like .pdf, .skp, .svg may differ but still draw identically.)
+    if (FLAGS_check && bitmap) {
+        SkBitmap reference;
+        SkString log;
+        Error err = sink->draw(src, &reference, nullptr, &log);
+        // If we can draw into this Sink via some pipeline, we should be able to draw directly.
+        SkASSERT(err.isEmpty());
+        if (!err.isEmpty()) {
+            return err;
+        }
+        // The dimensions are a property of the Src only, and so should be identical.
+        SkASSERT(reference.getSize() == bitmap->getSize());
+        if (reference.getSize() != bitmap->getSize()) {
+            return "Dimensions don't match reference";
+        }
+        // All SkBitmaps in DM are pre-locked and tight, so this comparison is easy.
+        if (0 != memcmp(reference.getPixels(), bitmap->getPixels(), reference.getSize())) {
+            return "Pixels don't match reference";
+        }
+    }
+    return "";
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -1060,16 +1128,6 @@ Error ViaUpright::draw(const Src& src, SkBitmap* bitmap, SkWStream* stream, SkSt
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-Error ViaPipe::draw(const Src& src, SkBitmap* bitmap, SkWStream* stream, SkString* log) const {
-    auto size = src.size();
-    return draw_to_canvas(fSink, bitmap, stream, log, size, [&](SkCanvas* canvas) {
-        PipeController controller(canvas, &SkImageDecoder::DecodeMemory);
-        SkGPipeWriter pipe;
-        const uint32_t kFlags = 0;
-        return src.draw(pipe.startRecording(&controller, kFlags, size.width(), size.height()));
-    });
-}
-
 Error ViaRemote::draw(const Src& src, SkBitmap* bitmap, SkWStream* stream, SkString* log) const {
     return draw_to_canvas(fSink, bitmap, stream, log, src.size(), [&](SkCanvas* target) {
         SkAutoTDelete<SkRemote::Encoder> decoder(SkRemote::NewDecoder(target));
@@ -1102,7 +1160,7 @@ Error ViaSerialization::draw(
 
     return draw_to_canvas(fSink, bitmap, stream, log, size, [&](SkCanvas* canvas) {
         canvas->drawPicture(deserialized);
-        return "";
+        return check_against_reference(bitmap, src, fSink);
     });
 }
 
@@ -1162,6 +1220,24 @@ Error ViaTiles::draw(const Src& src, SkBitmap* bitmap, SkWStream* stream, SkStri
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
+Error ViaPicture::draw(const Src& src, SkBitmap* bitmap, SkWStream* stream, SkString* log) const {
+    auto size = src.size();
+    return draw_to_canvas(fSink, bitmap, stream, log, size, [&](SkCanvas* canvas) -> Error {
+        SkPictureRecorder recorder;
+        SkAutoTUnref<SkPicture> pic;
+        Error err = src.draw(recorder.beginRecording(SkIntToScalar(size.width()),
+                                                     SkIntToScalar(size.height())));
+        if (!err.isEmpty()) {
+            return err;
+        }
+        pic.reset(recorder.endRecordingAsPicture());
+        canvas->drawPicture(pic);
+        return check_against_reference(bitmap, src, fSink);
+    });
+}
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
 // Draw the Src into two pictures, then draw the second picture into the wrapped Sink.
 // This tests that any shortcuts we may take while recording that second picture are legal.
 Error ViaSecondPicture::draw(
@@ -1179,7 +1255,7 @@ Error ViaSecondPicture::draw(
             pic.reset(recorder.endRecordingAsPicture());
         }
         canvas->drawPicture(pic);
-        return "";
+        return check_against_reference(bitmap, src, fSink);
     });
 }
 
@@ -1196,7 +1272,7 @@ Error ViaTwice::draw(const Src& src, SkBitmap* bitmap, SkWStream* stream, SkStri
                 return err;
             }
         }
-        return "";
+        return check_against_reference(bitmap, src, fSink);
     });
 }
 
@@ -1266,7 +1342,7 @@ Error ViaSingletonPictures::draw(
         SkAutoTUnref<SkPicture> macroPic(macroRec.endRecordingAsPicture());
 
         canvas->drawPicture(macroPic);
-        return "";
+        return check_against_reference(bitmap, src, fSink);
     });
 }
 

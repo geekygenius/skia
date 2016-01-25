@@ -16,11 +16,12 @@
 #include "SkFloatingPoint_opts.h"
 #include "SkMatrix_opts.h"
 #include "SkMorphologyImageFilter_opts.h"
+#include "SkSwizzler_opts.h"
 #include "SkTextureCompressor_opts.h"
 #include "SkUtils_opts.h"
 #include "SkXfermode_opts.h"
 
-#if defined(SK_CPU_X86)
+#if defined(SK_CPU_X86) && !defined(SK_BUILD_FOR_IOS)
     #if defined(SK_BUILD_FOR_WIN32)
         #include <intrin.h>
         static void cpuid (uint32_t abcd[4]) { __cpuid  ((int*)abcd, 1);    }
@@ -79,6 +80,12 @@ namespace SkOpts {
     decltype(matrix_translate)       matrix_translate       = sk_default::matrix_translate;
     decltype(matrix_scale_translate) matrix_scale_translate = sk_default::matrix_scale_translate;
     decltype(matrix_affine)          matrix_affine          = sk_default::matrix_affine;
+
+    decltype(RGBA_to_BGRA) RGBA_to_BGRA = sk_default::RGBA_to_BGRA;
+    decltype(RGBA_to_rgbA) RGBA_to_rgbA = sk_default::RGBA_to_rgbA;
+    decltype(RGBA_to_bgrA) RGBA_to_bgrA = sk_default::RGBA_to_bgrA;
+    decltype(RGB_to_RGB1)  RGB_to_RGB1  = sk_default::RGB_to_RGB1;
+    decltype(RGB_to_BGR1)  RGB_to_BGR1  = sk_default::RGB_to_BGR1;
 
     // Each Init_foo() is defined in src/opts/SkOpts_foo.cpp.
     void Init_ssse3();

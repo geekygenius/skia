@@ -7,16 +7,16 @@
 
 #include "SkBmpCodec.h"
 #include "SkCodec.h"
-#include "SkData.h"
-#include "SkCodec_libgif.h"
-#include "SkCodec_libico.h"
-#include "SkCodec_libpng.h"
-#include "SkCodec_wbmp.h"
 #include "SkCodecPriv.h"
+#include "SkData.h"
+#include "SkGifCodec.h"
+#include "SkIcoCodec.h"
 #if !defined(GOOGLE3)
 #include "SkJpegCodec.h"
 #endif
+#include "SkPngCodec.h"
 #include "SkStream.h"
+#include "SkWbmpCodec.h"
 #include "SkWebpCodec.h"
 
 struct DecoderProc {
@@ -62,41 +62,33 @@ SkCodec* SkCodec::NewFromStream(SkStream* stream,
     // we trust the caller to use a large enough buffer.
 
     if (0 == bytesRead) {
-        SkCodecPrintf("Could not peek!\n");
+        // TODO: After implementing peek in CreateJavaOutputStreamAdaptor.cpp, this
+        // printf could be useful to notice failures.
+        // SkCodecPrintf("Encoded image data failed to peek!\n");
+
         // It is possible the stream does not support peeking, but does support
         // rewinding.
         // Attempt to read() and pass the actual amount read to the decoder.
         bytesRead = stream->read(buffer, bytesToRead);
         if (!stream->rewind()) {
-            SkCodecPrintf("Could not rewind!\n");
+            SkCodecPrintf("Encoded image data could not peek or rewind to determine format!\n");
             return nullptr;
         }
     }
 
-    SkAutoTDelete<SkCodec> codec(nullptr);
     // PNG is special, since we want to be able to supply an SkPngChunkReader.
     // But this code follows the same pattern as the loop.
     if (SkPngCodec::IsPng(buffer, bytesRead)) {
-        codec.reset(SkPngCodec::NewFromStream(streamDeleter.detach(), chunkReader));
+        return SkPngCodec::NewFromStream(streamDeleter.detach(), chunkReader);
     } else {
         for (DecoderProc proc : gDecoderProcs) {
             if (proc.IsFormat(buffer, bytesRead)) {
-                codec.reset(proc.NewFromStream(streamDeleter.detach()));
-                break;
+                return proc.NewFromStream(streamDeleter.detach());
             }
         }
     }
 
-    // Set the max size at 128 megapixels (512 MB for kN32).
-    // This is about 4x smaller than a test image that takes a few minutes for
-    // dm to decode and draw.
-    const int32_t maxSize = 1 << 27;
-    if (codec && codec->getInfo().width() * codec->getInfo().height() > maxSize) {
-        SkCodecPrintf("Error: Image size too large, cannot decode.\n");
-        return nullptr;
-    } else {
-        return codec.detach();
-    }
+    return nullptr;
 }
 
 SkCodec* SkCodec::NewFromData(SkData* data, SkPngChunkReader* reader) {

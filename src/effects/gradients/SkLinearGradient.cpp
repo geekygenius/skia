@@ -9,10 +9,6 @@
 
 static const float kInv255Float = 1.0f / 255;
 
-static inline int repeat_bits(int x, const int bits) {
-    return x & ((1 << bits) - 1);
-}
-
 static inline int repeat_8bits(int x) {
     return x & 0xFF;
 }
@@ -22,13 +18,6 @@ static inline int repeat_8bits(int x) {
 #if defined(_MSC_VER) && (_MSC_VER >= 1600)
 #pragma optimize("", off)
 #endif
-
-static inline int mirror_bits(int x, const int bits) {
-    if (x & (1 << bits)) {
-        x = ~x;
-    }
-    return x & ((1 << bits) - 1);
-}
 
 static inline int mirror_8bits(int x) {
     if (x & 256) {
@@ -102,17 +91,6 @@ SkLinearGradient::LinearGradientContext::LinearGradientContext(
         const SkLinearGradient& shader, const ContextRec& ctx)
     : INHERITED(shader, ctx)
 {
-    unsigned mask = SkMatrix::kTranslate_Mask | SkMatrix::kScale_Mask;
-    if ((fDstToIndex.getType() & ~mask) == 0) {
-        // when we dither, we are (usually) not const-in-Y
-        if ((fFlags & SkShader::kHasSpan16_Flag) && !ctx.fPaint->isDither()) {
-            // only claim this if we do have a 16bit mode (i.e. none of our
-            // colors have alpha), and if we are not dithering (which obviously
-            // is not const in Y).
-            fFlags |= SkShader::kConstInY16_Flag;
-        }
-    }
-
     // setup for Sk4f
     int count = shader.fColorCount;
     fRecs.setCount(count);
@@ -122,7 +100,12 @@ SkLinearGradient::LinearGradientContext::LinearGradientContext(
         SkDEBUGCODE(rec[0].fPosScale = SK_FloatNaN;)   // should never get used
         for (int i = 1; i < count; ++i) {
             rec[i].fPos = SkTPin(shader.fOrigPos[i], rec[i - 1].fPos, 1.0f);
-            rec[i].fPosScale = 1.0f / (rec[i].fPos - rec[i - 1].fPos);
+            float diff = rec[i].fPos - rec[i - 1].fPos;
+            if (diff > 0) {
+                rec[i].fPosScale = 1.0f / diff;
+            } else {
+                rec[i].fPosScale = 0;
+            }
         }
         rec[count - 1].fPos = 1;    // overwrite the last value just to be sure we end at 1.0
     } else {
@@ -347,173 +330,6 @@ SkShader::GradientType SkLinearGradient::asAGradient(GradientInfo* info) const {
     return kLinear_GradientType;
 }
 
-static void dither_memset16(uint16_t dst[], uint16_t value, uint16_t other,
-                            int count) {
-    if (reinterpret_cast<uintptr_t>(dst) & 2) {
-        *dst++ = value;
-        count -= 1;
-        SkTSwap(value, other);
-    }
-
-    sk_memset32((uint32_t*)dst, (value << 16) | other, count >> 1);
-
-    if (count & 1) {
-        dst[count - 1] = value;
-    }
-}
-
-#define NO_CHECK_ITER_16                \
-    do {                                \
-    unsigned fi = SkGradFixedToFixed(fx) >> SkGradientShaderBase::kCache16Shift;  \
-    SkASSERT(fi < SkGradientShaderBase::kCache16Count);       \
-    fx += dx;                           \
-    *dstC++ = cache[toggle + fi];       \
-    toggle = next_dither_toggle16(toggle);            \
-    } while (0)
-
-namespace {
-
-typedef void (*LinearShade16Proc)(TileProc proc, SkGradFixed dx, SkGradFixed fx,
-                                  uint16_t* dstC, const uint16_t* cache,
-                                  int toggle, int count);
-
-void shadeSpan16_linear_vertical(TileProc proc, SkGradFixed dx, SkGradFixed fx,
-                                 uint16_t* SK_RESTRICT dstC,
-                                 const uint16_t* SK_RESTRICT cache,
-                                 int toggle, int count) {
-    // we're a vertical gradient, so no change in a span
-    unsigned fi = proc(SkGradFixedToFixed(fx)) >> SkGradientShaderBase::kCache16Shift;
-    SkASSERT(fi < SkGradientShaderBase::kCache16Count);
-    dither_memset16(dstC, cache[toggle + fi],
-        cache[next_dither_toggle16(toggle) + fi], count);
-}
-
-void shadeSpan16_linear_clamp(TileProc proc, SkGradFixed dx, SkGradFixed fx,
-                              uint16_t* SK_RESTRICT dstC,
-                              const uint16_t* SK_RESTRICT cache,
-                              int toggle, int count) {
-    SkClampRange range;
-    range.init(fx, dx, count, 0, SkGradientShaderBase::kCache32Count - 1);
-    range.validate(count);
-
-    if ((count = range.fCount0) > 0) {
-        dither_memset16(dstC,
-            cache[toggle + range.fV0],
-            cache[next_dither_toggle16(toggle) + range.fV0],
-            count);
-        dstC += count;
-    }
-    if ((count = range.fCount1) > 0) {
-        int unroll = count >> 3;
-        fx = range.fFx1;
-        for (int i = 0; i < unroll; i++) {
-            NO_CHECK_ITER_16;  NO_CHECK_ITER_16;
-            NO_CHECK_ITER_16;  NO_CHECK_ITER_16;
-            NO_CHECK_ITER_16;  NO_CHECK_ITER_16;
-            NO_CHECK_ITER_16;  NO_CHECK_ITER_16;
-        }
-        if ((count &= 7) > 0) {
-            do {
-                NO_CHECK_ITER_16;
-            } while (--count != 0);
-        }
-    }
-    if ((count = range.fCount2) > 0) {
-        dither_memset16(dstC,
-            cache[toggle + range.fV1],
-            cache[next_dither_toggle16(toggle) + range.fV1],
-            count);
-    }
-}
-
-void shadeSpan16_linear_mirror(TileProc proc, SkGradFixed dx, SkGradFixed fx,
-                               uint16_t* SK_RESTRICT dstC,
-                               const uint16_t* SK_RESTRICT cache,
-                               int toggle, int count) {
-    do {
-        unsigned fi = mirror_bits(SkGradFixedToFixed(fx) >> SkGradientShaderBase::kCache16Shift,
-                                        SkGradientShaderBase::kCache16Bits);
-        SkASSERT(fi < SkGradientShaderBase::kCache16Count);
-        fx += dx;
-        *dstC++ = cache[toggle + fi];
-        toggle = next_dither_toggle16(toggle);
-    } while (--count != 0);
-}
-
-void shadeSpan16_linear_repeat(TileProc proc, SkGradFixed dx, SkGradFixed fx,
-                               uint16_t* SK_RESTRICT dstC,
-                               const uint16_t* SK_RESTRICT cache,
-                               int toggle, int count) {
-    do {
-        unsigned fi = repeat_bits(SkGradFixedToFixed(fx) >> SkGradientShaderBase::kCache16Shift,
-                                  SkGradientShaderBase::kCache16Bits);
-        SkASSERT(fi < SkGradientShaderBase::kCache16Count);
-        fx += dx;
-        *dstC++ = cache[toggle + fi];
-        toggle = next_dither_toggle16(toggle);
-    } while (--count != 0);
-}
-}
-
-static bool fixed_nearly_zero(SkFixed x) {
-    return SkAbs32(x) < (SK_Fixed1 >> 12);
-}
-
-void SkLinearGradient::LinearGradientContext::shadeSpan16(int x, int y,
-                                                          uint16_t* SK_RESTRICT dstC, int count) {
-    SkASSERT(count > 0);
-
-    const SkLinearGradient& linearGradient = static_cast<const SkLinearGradient&>(fShader);
-
-    SkPoint             srcPt;
-    SkMatrix::MapXYProc dstProc = fDstToIndexProc;
-    TileProc            proc = linearGradient.fTileProc;
-    const uint16_t* SK_RESTRICT cache = fCache->getCache16();
-    int                 toggle = init_dither_toggle16(x, y);
-
-    if (fDstToIndexClass != kPerspective_MatrixClass) {
-        dstProc(fDstToIndex, SkIntToScalar(x) + SK_ScalarHalf,
-                             SkIntToScalar(y) + SK_ScalarHalf, &srcPt);
-        SkGradFixed dx, fx = SkScalarToGradFixed(srcPt.fX);
-
-        if (fDstToIndexClass == kFixedStepInX_MatrixClass) {
-            SkFixed dxStorage[1];
-            (void)fDstToIndex.fixedStepInX(SkIntToScalar(y), dxStorage, nullptr);
-            // todo: do we need a real/high-precision value for dx here?
-            dx = SkFixedToGradFixed(dxStorage[0]);
-        } else {
-            SkASSERT(fDstToIndexClass == kLinear_MatrixClass);
-            dx = SkScalarToGradFixed(fDstToIndex.getScaleX());
-        }
-
-        LinearShade16Proc shadeProc = shadeSpan16_linear_repeat;
-        if (fixed_nearly_zero(SkGradFixedToFixed(dx))) {
-            shadeProc = shadeSpan16_linear_vertical;
-        } else if (SkShader::kClamp_TileMode == linearGradient.fTileMode) {
-            shadeProc = shadeSpan16_linear_clamp;
-        } else if (SkShader::kMirror_TileMode == linearGradient.fTileMode) {
-            shadeProc = shadeSpan16_linear_mirror;
-        } else {
-            SkASSERT(SkShader::kRepeat_TileMode == linearGradient.fTileMode);
-        }
-        (*shadeProc)(proc, dx, fx, dstC, cache, toggle, count);
-    } else {
-        SkScalar    dstX = SkIntToScalar(x);
-        SkScalar    dstY = SkIntToScalar(y);
-        do {
-            dstProc(fDstToIndex, dstX, dstY, &srcPt);
-            unsigned fi = proc(SkScalarToFixed(srcPt.fX));
-            SkASSERT(fi <= 0xFFFF);
-
-            int index = fi >> kCache16Shift;
-            *dstC++ = cache[toggle + index];
-            toggle = next_dither_toggle16(toggle);
-
-            dstX += SK_Scalar1;
-        } while (--count != 0);
-    }
-}
-
 #if SK_SUPPORT_GPU
 
 #include "glsl/GrGLSLCaps.h"
@@ -672,7 +488,7 @@ find_forward(const SkLinearGradient::LinearGradientContext::Rec rec[], float til
     SkASSERT(rec[1].fPos >= 0 && rec[1].fPos <= 1);
     SkASSERT(rec[0].fPos <= rec[1].fPos);
     rec += 1;
-    while (rec->fPos < tiledX) {
+    while (rec->fPos < tiledX || rec->fPosScale == 0) {
         SkASSERT(rec[0].fPos >= 0 && rec[0].fPos <= 1);
         SkASSERT(rec[1].fPos >= 0 && rec[1].fPos <= 1);
         SkASSERT(rec[0].fPos <= rec[1].fPos);
@@ -688,7 +504,7 @@ find_backward(const SkLinearGradient::LinearGradientContext::Rec rec[], float ti
     SkASSERT(rec[0].fPos >= 0 && rec[0].fPos <= 1);
     SkASSERT(rec[1].fPos >= 0 && rec[1].fPos <= 1);
     SkASSERT(rec[0].fPos <= rec[1].fPos);
-    while (tiledX < rec->fPos) {
+    while (tiledX < rec->fPos || rec[1].fPosScale == 0) {
         rec -= 1;
         SkASSERT(rec[0].fPos >= 0 && rec[0].fPos <= 1);
         SkASSERT(rec[1].fPos >= 0 && rec[1].fPos <= 1);
@@ -857,12 +673,12 @@ void SkLinearGradient::LinearGradientContext::shade4_dx_clamp(SkPMColor dstC[], 
         }
 
         fx += n * dx;
-        count -= n;
-        SkASSERT(count >= 0);
+        // fx should now outside of the p0..p1 interval. However, due to float precision loss,
+        // its possible that fx is slightly too small/large, so we clamp it.
         if (dx_is_pos) {
-            SkASSERT(0 == count || fx >= p1);
+            fx = SkTMax(fx, p1);
         } else {
-            SkASSERT(0 == count || fx <= p0);
+            fx = SkTMin(fx, p0);
         }
 
         ramp<apply_alpha>(dstC, n, c, dc, dither0, dither1);
@@ -872,6 +688,9 @@ void SkLinearGradient::LinearGradientContext::shade4_dx_clamp(SkPMColor dstC[], 
         if (n & 1) {
             SkTSwap(dither0, dither1);
         }
+
+        count -= n;
+        SkASSERT(count >= 0);
     }
 }
 

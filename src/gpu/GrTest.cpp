@@ -173,6 +173,7 @@ void GrGpu::Stats::dump(SkString* out) {
     out->appendf("Shader Compilations: %d\n", fShaderCompilations);
     out->appendf("Textures Created: %d\n", fTextureCreates);
     out->appendf("Texture Uploads: %d\n", fTextureUploads);
+    out->appendf("Transfers to Texture: %d\n", fTransfersToTexture);
     out->appendf("Stencil Buffer Creates: %d\n", fStencilAttachmentCreates);
     out->appendf("Number of draws: %d\n", fNumDraws);
 }
@@ -182,6 +183,7 @@ void GrGpu::Stats::dumpKeyValuePairs(SkTArray<SkString>* keys, SkTArray<double>*
     keys->push_back(SkString("shader_compilations")); values->push_back(fShaderCompilations);
     keys->push_back(SkString("textures_created")); values->push_back(fTextureCreates);
     keys->push_back(SkString("texture_uploads")); values->push_back(fTextureUploads);
+    keys->push_back(SkString("transfers_to_texture")); values->push_back(fTransfersToTexture);
     keys->push_back(SkString("stencil_buffer_creates")); values->push_back(fStencilAttachmentCreates);
     keys->push_back(SkString("number_of_draws")); values->push_back(fNumDraws);
 }
@@ -249,6 +251,25 @@ void GrResourceCache::dumpStatsKeyValuePairs(SkTArray<SkString>* keys,
 void GrResourceCache::changeTimestamp(uint32_t newTimestamp) { fTimestamp = newTimestamp; }
 
 ///////////////////////////////////////////////////////////////////////////////
+
+#define ASSERT_SINGLE_OWNER \
+    SkDEBUGCODE(GrSingleOwner::AutoEnforce debug_SingleOwner(fSingleOwner);)
+#define RETURN_IF_ABANDONED        if (fDrawingManager->abandoned()) { return; }
+
+void GrDrawContext::internal_drawBatch(const GrPipelineBuilder& pipelineBuilder,
+                                       GrDrawBatch* batch) {
+    ASSERT_SINGLE_OWNER
+    RETURN_IF_ABANDONED
+    SkDEBUGCODE(this->validate();)
+    GR_AUDIT_TRAIL_AUTO_FRAME(fAuditTrail, "GrDrawContext::internal_drawBatch");
+
+    this->getDrawTarget()->drawBatch(pipelineBuilder, batch);
+}
+
+#undef ASSERT_SINGLE_OWNER
+#undef RETURN_IF_ABANDONED
+
+///////////////////////////////////////////////////////////////////////////////
 // Code for the mock context. It's built on a mock GrGpu class that does nothing.
 ////
 
@@ -256,10 +277,19 @@ void GrResourceCache::changeTimestamp(uint32_t newTimestamp) { fTimestamp = newT
 
 class GrPipeline;
 
+class MockCaps : public GrCaps {
+public:
+    explicit MockCaps(const GrContextOptions& options) : INHERITED(options) {}
+    bool isConfigTexturable(GrPixelConfig config) const override { return false; }
+    bool isConfigRenderable(GrPixelConfig config, bool withMSAA) const override { return false; }
+private:
+    typedef GrCaps INHERITED;
+};
+
 class MockGpu : public GrGpu {
 public:
     MockGpu(GrContext* context, const GrContextOptions& options) : INHERITED(context) {
-        fCaps.reset(new GrCaps(options));
+        fCaps.reset(new MockCaps(options));
     }
     ~MockGpu() override {}
 
@@ -334,6 +364,13 @@ private:
                        int left, int top, int width, int height,
                        GrPixelConfig config, const void* buffer,
                        size_t rowBytes) override {
+        return false;
+    }
+
+    bool onTransferPixels(GrSurface* surface,
+                          int left, int top, int width, int height,
+                          GrPixelConfig config, GrTransferBuffer* buffer,
+                          size_t offset, size_t rowBytes) override {
         return false;
     }
 

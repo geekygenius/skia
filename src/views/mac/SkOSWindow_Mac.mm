@@ -48,9 +48,9 @@ bool SkOSWindow::onEvent(const SkEvent& evt) {
     return this->INHERITED::onEvent(evt);
 }
 
-bool SkOSWindow::onDispatchClick(int x, int y, Click::State state, void* owner,
-                                 unsigned modi) {
-    return this->INHERITED::onDispatchClick(x, y, state, owner, modi);
+bool SkOSWindow::onDispatchClick(int x, int y, Click::State state, Click::Button button, 
+                                 void* owner, unsigned modi) {
+    return this->INHERITED::onDispatchClick(x, y, state, button, owner, modi);
 }
 
 void SkOSWindow::onSetTitle(const char title[]) {

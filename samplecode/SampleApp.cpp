@@ -1854,7 +1854,7 @@ bool SampleWindow::onHandleKey(SkKey key) {
 static const char gGestureClickType[] = "GestureClickType";
 
 bool SampleWindow::onDispatchClick(int x, int y, Click::State state,
-        void* owner, unsigned modi) {
+        Click::Button button, void* owner, unsigned modi) {
     if (Click::kMoved_State == state) {
         updatePointer(x, y);
     }
@@ -1880,7 +1880,7 @@ bool SampleWindow::onDispatchClick(int x, int y, Click::State state,
             }
             return true;
         } else {
-            return this->INHERITED::onDispatchClick(x, y, state, owner, modi);
+            return this->INHERITED::onDispatchClick(x, y, state, button, owner, modi);
         }
     }
 }

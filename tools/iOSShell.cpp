@@ -33,7 +33,7 @@ ShellWindow::~ShellWindow() {
 ///////////////////////////////////////////////////////////////////////////////
 
 bool ShellWindow::onDispatchClick(int x, int y, Click::State state,
-        void* owner, unsigned modi) {
+        Click::Button button, void* owner, unsigned modi) {
     int w = SkScalarRoundToInt(this->width());
     int h = SkScalarRoundToInt(this->height());
 
@@ -41,7 +41,7 @@ bool ShellWindow::onDispatchClick(int x, int y, Click::State state,
     if (w - x < 16 && h - y < 16) {
         return false;   // let the OS handle the click
     } else {
-        return this->INHERITED::onDispatchClick(x, y, state, owner, modi);
+        return this->INHERITED::onDispatchClick(x, y, state, button, owner, modi);
     }
 }
 

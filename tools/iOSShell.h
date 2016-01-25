@@ -22,8 +22,8 @@ public:
 protected:
     void onSizeChange() override;
 
-    virtual bool onDispatchClick(int x, int y, Click::State, void* owner,
-                                 unsigned modi) override;
+    virtual bool onDispatchClick(int x, int y, Click::State, Click::Button, 
+	                             void* owner, unsigned modi) override;
 
 private:
     typedef SkOSWindow INHERITED;

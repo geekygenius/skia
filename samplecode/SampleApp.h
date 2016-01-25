@@ -153,7 +153,7 @@ protected:
     bool onEvent(const SkEvent& evt) override;
     bool onQuery(SkEvent* evt) override;
 
-    virtual bool onDispatchClick(int x, int y, Click::State, void* owner,
+    virtual bool onDispatchClick(int x, int y, Click::State, Click::Button, void* owner,
                                  unsigned modi) override;
     bool onClick(Click* click) override;
     virtual Click* onFindClickHandler(SkScalar x, SkScalar y,

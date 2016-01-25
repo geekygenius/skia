@@ -223,12 +223,12 @@ SkOSWindow::NextXEventResult SkOSWindow::nextXEvent() {
 		//Xlib button numbers match up with Skia numbers, so we can pass them directly
         case ButtonPress:
 			this->handleClick(evt.xbutton.x, evt.xbutton.y,
-						SkView::Click::kDown_State, evt.xbutton.button, 
+						SkView::Click::kDown_State, (Button::Click) evt.xbutton.button, 
 						nullptr, getModi(evt));
             break;
         case ButtonRelease:
 			this->handleClick(evt.xbutton.x, evt.xbutton.y,
-						  SkView::Click::kUp_State, evt.xbutton.button, 
+						  SkView::Click::kUp_State, (Button::Click) evt.xbutton.button, 
 						  nullptr, getModi(evt));
             break;
 			

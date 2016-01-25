@@ -56,28 +56,28 @@
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
     for (UITouch *touch in touches) {
         CGPoint loc = [touch locationInView:self];
-        fWind->handleClick(loc.x, loc.y, SkView::Click::kDown_State, touch);
+        fWind->handleClick(loc.x, loc.y, SkView::Click::kDown_State, SkView::Click::kLeft_Button, touch);
     }
 }
 
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event {
     for (UITouch *touch in touches) {
         CGPoint loc = [touch locationInView:self];
-        fWind->handleClick(loc.x, loc.y, SkView::Click::kMoved_State, touch);
+        fWind->handleClick(loc.x, loc.y, SkView::Click::kMoved_State, SkView::Click::kNo_Button, touch);
     }
 }
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
     for (UITouch *touch in touches) {
         CGPoint loc = [touch locationInView:self];
-        fWind->handleClick(loc.x, loc.y, SkView::Click::kUp_State, touch);
+        fWind->handleClick(loc.x, loc.y, SkView::Click::kUp_State, SkView::Click::kLeft_Button, touch);
     }
 }
 
 - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event {
     for (UITouch *touch in touches) {
         CGPoint loc = [touch locationInView:self];
-        fWind->handleClick(loc.x, loc.y, SkView::Click::kUp_State, touch);
+        fWind->handleClick(loc.x, loc.y, SkView::Click::kUp_State, SkView::Click::kLeft_Button, touch);
     }
 }
 

@@ -204,7 +204,7 @@ void SkOSWindow::handleEvents() {
             case SDL_MOUSEMOTION:
                 if (event.motion.state == SDL_PRESSED) {
                     this->handleClick(event.motion.x, event.motion.y,
-                                     SkView::Click::kMoved_State, nullptr);
+                                     SkView::Click::kMoved_State, SkView::Click::kNo_Button, nullptr);
                 }
                 break;
             case SDL_MOUSEBUTTONDOWN:
@@ -212,7 +212,8 @@ void SkOSWindow::handleEvents() {
                 this->handleClick(event.button.x, event.button.y,
                                   event.button.state == SDL_PRESSED ?
                                   SkView::Click::kDown_State :
-                                  SkView::Click::kUp_State, nullptr);
+                                  SkView::Click::kUp_State, event.button.button, nullptr);
+								  //SDL and Skia buttons match number for number
                 break;
             case SDL_KEYDOWN: {
                 SDL_Keycode key = event.key.keysym.sym;

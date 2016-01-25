@@ -219,19 +219,23 @@ SkOSWindow::NextXEventResult SkOSWindow::nextXEvent() {
         case ConfigureNotify:
             this->resize(evt.xconfigure.width, evt.xconfigure.height);
             break;
+			
+		//Xlib button numbers match up with Skia numbers, so we can pass them directly
         case ButtonPress:
-            if (evt.xbutton.button == Button1)
-                this->handleClick(evt.xbutton.x, evt.xbutton.y,
-                            SkView::Click::kDown_State, nullptr, getModi(evt));
+			this->handleClick(evt.xbutton.x, evt.xbutton.y,
+						SkView::Click::kDown_State, evt.xbutton.button, 
+						nullptr, getModi(evt));
             break;
         case ButtonRelease:
-            if (evt.xbutton.button == Button1)
-                this->handleClick(evt.xbutton.x, evt.xbutton.y,
-                              SkView::Click::kUp_State, nullptr, getModi(evt));
+			this->handleClick(evt.xbutton.x, evt.xbutton.y,
+						  SkView::Click::kUp_State, evt.xbutton.button, 
+						  nullptr, getModi(evt));
             break;
+			
         case MotionNotify:
             this->handleClick(evt.xmotion.x, evt.xmotion.y,
-                           SkView::Click::kMoved_State, nullptr, getModi(evt));
+                           SkView::Click::kMoved_State, SkView::Click::kNo_Button,
+						   nullptr, getModi(evt));
             break;
         case KeyPress: {
             int shiftLevel = (evt.xkey.state & ShiftMask) ? 1 : 0;

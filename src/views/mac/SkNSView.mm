@@ -278,7 +278,8 @@ static unsigned convertNSModifiersToSk(NSUInteger nsModi) {
         loc.y = -loc.y;
 #endif
         fWind->handleClick((int) loc.x, (int) loc.y,
-                           SkView::Click::kDown_State, self, modi);
+                           SkView::Click::kDown_State, SkView::Click::kLeft_Button, 
+						   self, modi);
     }
 }
 
@@ -293,7 +294,8 @@ static unsigned convertNSModifiersToSk(NSUInteger nsModi) {
         loc.y = -loc.y;
 #endif
         fWind->handleClick((int) loc.x, (int) loc.y,
-                           SkView::Click::kMoved_State, self, modi);
+                           SkView::Click::kMoved_State, SkView::Click::kLeft_Button, 
+						   self, modi);
     }
 }
 
@@ -308,7 +310,8 @@ static unsigned convertNSModifiersToSk(NSUInteger nsModi) {
         loc.y = -loc.y;
 #endif
         fWind->handleClick((int) loc.x, (int) loc.y,
-                           SkView::Click::kMoved_State, self, modi);
+                           SkView::Click::kMoved_State, SkView::Click::kNo_Button, 
+						   self, modi);
     }
 }
 
@@ -323,7 +326,8 @@ static unsigned convertNSModifiersToSk(NSUInteger nsModi) {
         loc.y = -loc.y;
 #endif
         fWind->handleClick((int) loc.x, (int) loc.y,
-                           SkView::Click::kUp_State, self, modi);
+                           SkView::Click::kUp_State, SkView::Click::kLeft_Button, 
+						   self, modi);
     }
 }
 

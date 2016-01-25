@@ -156,8 +156,8 @@ public:
 		enum Button{
 			kNo_Button = 0,
 			kLeft_Button = 1,
-			kRight_Button = 2,
-			kMiddle_Button = 3,
+			kMiddle_Button = 2,
+			kRight_Button = 3,
 			kX1_Button = 4,
 			kX2_Button = 5,
 		};

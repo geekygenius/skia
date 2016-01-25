@@ -138,7 +138,7 @@ public:
     //  Click handling
 
     class Click {
-    public:
+    public:	
         Click(SkView* target);
         virtual ~Click();
 
@@ -151,7 +151,15 @@ public:
             kDown_State,
             kMoved_State,
             kUp_State
-        };
+        };		
+		
+		enum Button{
+			kNo_Button = 0,
+			kLeft_Button = 1,
+			kRight_Button = 2,
+			kMiddle_Button = 3,
+		};
+		
         SkPoint     fOrig, fPrev, fCurr;
         SkIPoint    fIOrig, fIPrev, fICurr;
         State       fState;
@@ -170,9 +178,9 @@ public:
     };
     Click*  findClickHandler(SkScalar x, SkScalar y, unsigned modifierKeys);
 
-    static void DoClickDown(Click*, int x, int y, unsigned modi);
+    static void DoClickDown(Click*, int x, int y, Click::Button, unsigned modi);
     static void DoClickMoved(Click*, int x, int y, unsigned modi);
-    static void DoClickUp(Click*, int x, int y, unsigned modi);
+    static void DoClickUp(Click*, int x, int y, Click::Button, unsigned modi);
 
     /** Send the event to the view's parent, and its parent etc. until one of them
         returns true from its onEvent call. This view is returned. If no parent handles

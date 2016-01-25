@@ -165,18 +165,18 @@ bool SkOSWindow::wndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             } break;
 
         case WM_LBUTTONDOWN:
-            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam),
-                              Click::kDown_State, NULL, getModifiers(message));
+            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kDown_State,
+                              Click::kLeft_Button, NULL, getModifiers(message));
             return true;
 
         case WM_MOUSEMOVE:
-            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam),
-                              Click::kMoved_State, NULL, getModifiers(message));
+            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kMoved_State,
+                              Click::kNo_Button, NULL, getModifiers(message));
             return true;
 
         case WM_LBUTTONUP:
-            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam),
-                              Click::kUp_State, NULL, getModifiers(message));
+            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kUp_State,
+                              Click::kLeft_Button, NULL, getModifiers(message));
             return true;
 
         case WM_EVENT_CALLBACK:

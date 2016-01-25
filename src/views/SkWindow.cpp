@@ -258,12 +258,12 @@ bool SkWindow::onHandleKeyUp(SkKey) {
     return false;
 }
 
-bool SkWindow::handleClick(int x, int y, Click::State state, void *owner,
+bool SkWindow::handleClick(int x, int y, Click::State state, Click::Button button, void *owner,
                            unsigned modifierKeys) {
-    return this->onDispatchClick(x, y, state, owner, modifierKeys);
+    return this->onDispatchClick(x, y, state, button, owner, modifierKeys);
 }
 
-bool SkWindow::onDispatchClick(int x, int y, Click::State state,
+bool SkWindow::onDispatchClick(int x, int y, Click::State state, Click::Button button,
                                void* owner, unsigned modifierKeys) {
     bool handled = false;
 
@@ -288,7 +288,7 @@ bool SkWindow::onDispatchClick(int x, int y, Click::State state,
             if (click) {
                 click->fOwner = owner;
                 *fClicks.append() = click;
-                SkView::DoClickDown(click, x, y, modifierKeys);
+                SkView::DoClickDown(click, x, y, button, modifierKeys);
                 handled = true;
             }
             break;
@@ -301,7 +301,7 @@ bool SkWindow::onDispatchClick(int x, int y, Click::State state,
             break;
         case Click::kUp_State:
             if (index != -1) {
-                SkView::DoClickUp(fClicks[index], x, y, modifierKeys);
+                SkView::DoClickUp(fClicks[index], x, y, button, modifierKeys);
                 delete fClicks[index];
                 fClicks.remove(index);
                 handled = true;

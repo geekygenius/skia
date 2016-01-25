@@ -400,7 +400,7 @@ SkView::Click* SkView::findClickHandler(SkScalar x, SkScalar y, unsigned modi) {
     return this->onFindClickHandler(x, y, modi);
 }
 
-void SkView::DoClickDown(Click* click, int x, int y, unsigned modi)
+void SkView::DoClickDown(Click* click, int x, int y, Click::Button, unsigned modi)
 {
     SkASSERT(click);
 
@@ -448,7 +448,7 @@ void SkView::DoClickMoved(Click* click, int x, int y, unsigned modi)
     target->onClick(click);
 }
 
-void SkView::DoClickUp(Click* click, int x, int y, unsigned modi)
+void SkView::DoClickUp(Click* click, int x, int y, Click::Button, unsigned modi)
 {
     SkASSERT(click);
 

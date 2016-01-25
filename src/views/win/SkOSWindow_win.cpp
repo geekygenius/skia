@@ -167,16 +167,44 @@ bool SkOSWindow::wndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         case WM_LBUTTONDOWN:
             this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kDown_State,
                               Click::kLeft_Button, NULL, getModifiers(message));
+            return true;		
+        case WM_RBUTTONDOWN:
+            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kDown_State,
+                              Click::kRight_Button, NULL, getModifiers(message));
             return true;
-
-        case WM_MOUSEMOVE:
-            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kMoved_State,
-                              Click::kNo_Button, NULL, getModifiers(message));
+        case WM_MBUTTONDOWN:
+            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kDown_State,
+                              Click::kMiddle_Button, NULL, getModifiers(message));
+            return true;			
+        case WM_XBUTTONDOWN: {
+            Click::Button button = GET_XBUTTON_WPARAM(wParam) == XBUTTON1 ? Click::kX1_Button : Click::kX2_Button;
+            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kDown_State,
+                button, NULL, getModifiers(message));
             return true;
-
+        }
+        
         case WM_LBUTTONUP:
             this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kUp_State,
                               Click::kLeft_Button, NULL, getModifiers(message));
+            return true;
+        case WM_RBUTTONUP:
+            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kUp_State,
+                              Click::kRight_Button, NULL, getModifiers(message));
+            return true;
+        case WM_MBUTTONUP:
+            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kUp_State,
+                              Click::kMiddle_Button, NULL, getModifiers(message));
+            return true;
+        case WM_XBUTTONUP: {
+            Click::Button button = GET_XBUTTON_WPARAM(wParam) == XBUTTON1 ? Click::kX1_Button : Click::kX2_Button;
+            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kUp_State,
+                button, NULL, getModifiers(message));
+            return true;
+        }
+            
+        case WM_MOUSEMOVE:
+            this->handleClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), Click::kMoved_State,
+                              Click::kNo_Button, NULL, getModifiers(message));
             return true;
 
         case WM_EVENT_CALLBACK:

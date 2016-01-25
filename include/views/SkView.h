@@ -158,6 +158,8 @@ public:
 			kLeft_Button = 1,
 			kRight_Button = 2,
 			kMiddle_Button = 3,
+			kX1_Button = 4,
+			kX2_Button = 5,
 		};
 		
         SkPoint     fOrig, fPrev, fCurr;
